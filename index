@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escáner de Salida - Guardia</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <style>
+        body { font-family: sans-serif; background: #2c3e50; color: white; margin: 0; text-align: center; }
+        #scanner-container { width: 100%; max-width: 500px; margin: auto; padding: 10px; }
+        h1 { font-size: 1.5rem; margin: 15px 0; }
+        #status { font-size: 1.2rem; color: #1abc9c; font-weight: bold; margin-top: 10px; padding: 0 10px; }
+        #reader { border: 2px solid #1abc9c; border-radius: 8px; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <h1>Escanear Credencial</h1>
+
+    <div id="scanner-container">
+        <div id="reader"></div>
+    </div>
+    <p id="status">Esperando escaneo...</p>
+
+    <script>
+        // 1. Configurar e inicializar Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyBRdSbW4Aj7xgHXPo4hvrYh076Ronc4Xrg",
+            authDomain: "guardia-24695.firebaseapp.com",
+            databaseURL: "https://guardia-24695-default-rtdb.firebaseio.com", 
+            projectId: "guardia-24695",
+            storageBucket: "guardia-24695.firebasestorage.app",
+            messagingSenderId: "398247161945",
+            appId: "1:398247161945:web:41ee9dc21ba3269d304148",
+            measurementId: "G-KP1DQXM8JX"
+        };
+
+        // Inicializar Firebase usando el objeto compatible global
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 2. Variables de control
+        let ultimoEscaneo = "";
+        let audioCtx = null; 
+
+        // 3. Configurar el Escáner
+        const html5QrCode = new Html5Qrcode("reader");
+
+        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            if (decodedText === ultimoEscaneo) return;
+            ultimoEscaneo = decodedText;
+
+            document.getElementById('status').innerText = `Enviando: ${decodedText}...`;
+            document.getElementById('status').style.color = "#f1c40f";
+
+            // Enviar a Firebase utilizando la referencia correcta de la base de datos
+            db.ref('salidas').push({
+                nombreAlumno: decodedText,
+                hora: Date.now()
+            }).then(() => {
+                document.getElementById('status').innerText = `✅ ${decodedText} anunciado`;
+                document.getElementById('status').style.color = "#2ecc71";
+                beep();
+            }).catch((error) => {
+                document.getElementById('status').innerText = `❌ Error Firebase: ${error.message}`;
+                document.getElementById('status').style.color = "#e74c3c";
+            });
+
+            // Resetear el bloqueo después de 3 segundos
+            setTimeout(() => { ultimoEscaneo = ""; }, 3000);
+        };
+
+        const qrCodeErrorCallback = (errorMessage) => {
+            // Se puede omitir o usar para depuración interna
+        };
+
+        // 4. Iniciar cámara trasera
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            qrCodeSuccessCallback,
+            qrCodeErrorCallback
+        ).catch((err) => {
+            document.getElementById('status').innerText = `❌ Error de cámara: Asegúrate de usar HTTPS o localhost, y dar permisos.`;
+            document.getElementById('status').style.color = "#e74c3c";
+            console.error(err);
+        });
+
+        // 5. Sonido de confirmación
+        function beep() {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                gainNode.gain.value = 0.1;
+                oscillator.frequency.value = 1000;
+                oscillator.type = "sine";
+                
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 120);
+            } catch (e) {
+                console.log("El navegador bloqueó el audio temporalmente:", e);
+            }
+        }
+    </script>
+</body>
+</html>
